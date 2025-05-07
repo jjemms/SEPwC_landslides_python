@@ -1,3 +1,18 @@
+"""
+terrain_analysis.py
+
+This script uses a machine learning model to predict landslide risk based on topography, geology, land cover, and fault data.
+The model trains a RandomForestClassifier on a dataset of known landslide locations.
+Then the script uses the trained model on each pixel to create a landslide risk map (values between 0.0-1.0).
+
+Plan:
+1. Read inputs (DEM, geology, land cover, fault locations, landslide locations)
+2. Calculate slope (from DEM) and distance to faults
+3. Gat training samples
+4. Train a RandomForestClassifier on the training samples
+5. Create a probability for each pixel using the classifier
+6. Save results as a GeoTIFF file
+"""
 import argparse
 import numpy as np
 import rasterio
