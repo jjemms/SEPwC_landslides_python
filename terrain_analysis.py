@@ -1,9 +1,33 @@
 import argparse
+import numpy as np
+import rasterio
+from rasterio.io import MemoryFile, DatasetReader
 
-def convert_to_rasterio(raster_data, template_raster):
-  
-    return
+def convert_to_rasterio(
+    raster_data: np.ndarray,
+    template_raster: DatasetReader
+) -> DatasetReader:
+    """
+    Wrap a 2D NumPy array as a rasterio DatasetReader
+    using the template raster's spatial metadata
+    """
+    # Copy the geospatial metadata and update it to match the new array
+    profile = template_raster.profile.copy()
+    profile.update({
+        'height': raster_data.shape[0],
+        'width': raster_data.shape[1],
+        'count': 1,                # single band
+        'dtype': raster_data.dtype,
+        'transform': template_raster.transform,
+    })
 
+    # Create an in-memory GeoTIFF file and write array into band 1
+    memfile = MemoryFile()
+    with memfile.open(**profile) as dst:
+        dst.write(raster_data, 1)
+
+    # Re-open the in-memory file in read mode and return the DatasetReader
+    return memfile.open()
 
 def extract_values_from_raster(raster, shape_object):
 
