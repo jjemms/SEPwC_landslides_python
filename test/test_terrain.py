@@ -7,7 +7,7 @@ from pylint.lint import Run
 from pylint.reporters import CollectingReporter
 from dataclasses import asdict
 import numpy as np
-
+import pandas as pd
 class TestTerrainAnalysis():
     
     def test_convert_rasterio(self):
