@@ -16,7 +16,10 @@ Plan:
 import argparse
 import numpy as np
 import rasterio
+import geopandas as gpd
 from rasterio.io import MemoryFile, DatasetReader
+from typing import List
+from shapely.geometry import Point
 
 def convert_to_rasterio(
     raster_data: np.ndarray,
@@ -31,23 +34,32 @@ def convert_to_rasterio(
     profile.update({
         'height': raster_data.shape[0],
         'width': raster_data.shape[1],
-        'count': 1,                # single band
+        'count': 1,                       # single band
         'dtype': raster_data.dtype,
         'transform': template_raster.transform,
     })
 
-    # Create an in-memory GeoTIFF file and write array into band 1
+    # create an in-memory GeoTIFF file and write array into band 1
     memfile = MemoryFile()
     with memfile.open(**profile) as dst:
         dst.write(raster_data, 1)
 
-    # Re-open the in-memory file in read mode and return the DatasetReader
+    # re-open the in-memory file in read mode and return the DatasetReader
     return memfile.open()
 
-def extract_values_from_raster(raster, shape_object):
+def extract_values_from_raster(
+    raster: DatasetReader,
+    points: List[Point]
+) -> List[float]:
+    """
+    given an open rasterio DatasetReader and a list of shapely point
+    geometries, sample the raster at each point and return a list of floats
+    """
+    coordinates = [(pt.x, pt.y) for pt in points]
+    samples = raster.sample(coordinates)
 
-    return
-
+    # loop over each sample array, convert to float, collect in a list
+    return [float(arr[0]) for arr in samples] 
 
 def make_classifier(x, y, verbose=False):
 
