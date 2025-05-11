@@ -8,7 +8,8 @@ Then the script uses the trained model on each pixel to create a landslide risk 
 Plan:
 1. Read inputs (DEM, geology, land cover, fault locations, landslide locations)
 2. Calculate slope (from DEM) and distance to faults
-3. Gat training samples
+3. Get training samples and create a DataFrame of positive and negative samples
+   (positive = landslide, negative = no landslide)
 4. Train a RandomForestClassifier on the training samples
 5. Create a probability for each pixel using the classifier
 6. Save results as a GeoTIFF file
@@ -17,8 +18,12 @@ import argparse
 import numpy as np
 import rasterio
 import geopandas as gpd
+import pandas as pd
 from rasterio.io import MemoryFile, DatasetReader
-from typing import List
+from typing import List, Union
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+from sklearn.preprocessing import StandardScaler
 from shapely.geometry import Point
 
 def convert_to_rasterio(
@@ -47,13 +52,83 @@ def convert_to_rasterio(
     # re-open the in-memory file in read mode and return the DatasetReader
     return memfile.open()
 
+def build_dataframe(
+     dem: DatasetReader,
+     geology: DatasetReader,
+     landcover: DatasetReader,
+     faults: DatasetReader,
+     landslides_gdf: gpd.GeoDataFrame,
+     n_samples: int = 1000,  # number of negative and positive samples
+) -> gpd.GeoDataFrame:
+    """
+    Build a geodata frame of positive (landslide) and negative (no landslide) samples
+    for training the landslide classifier
+    """
+    # Positive samples, randomly pick n_samples landslide points
+    if len(landslides_gdf) > n_samples:
+        pos_gdf = landslides_gdf.sample(n=n_samples, random_state=42)
+    else:
+        pos_gdf = landslides_gdf.sample(n=n_samples, replace=True, random_state=42)
+    pos_pts = list(pos_gdf.geometry)
+
+    #Create mask of 1 where landslides are, 0 elsewhere
+    transform = dem.transform
+    landslide_shapes = [(geom, 1) for geom in pos_pts]
+    mask_arr = rasterio.features.rasterize(
+        landslide_shapes,
+        out_shape=(dem.height, dem.width),
+        transform=transform,
+        fill=0,
+        dtype='uint8'
+    )
+
+    # Find indices of negative samples where mask == 0
+    no_landslide_indices = np.column_stack(np.where(mask_arr ==0))
+    # Randomly select n_samples negative samples
+    if len(no_landslide_indices) > n_samples:
+        chosen = no_landslide_indices[np.random.choice(len(no_landslide_indices), n_samples, replace=False)]
+    else:
+        chosen = no_landslide_indices[np.random.choice(len(no_landslide_indices), n_samples, replace=True)]
+    # Convert to shapely points
+    neg_pts = []
+    for row, col in chosen:
+        x, y = transform * (col + 0.5, row + 0.5)  # The center of pixel
+        neg_pts.append(Point(x, y))
+
+    # Sample all four rasters at a list of points
+    def sample_all(pts: List[Point]):
+        return {
+            'elevation': extract_values_from_raster(dem, pts),
+            'geology': extract_values_from_raster(geology, pts),
+            'landcover': extract_values_from_raster(landcover, pts),
+            'faults': extract_values_from_raster(faults, pts),
+        }
+    pos_data = sample_all(pos_pts)
+    neg_data = sample_all(neg_pts)
+
+    # Create DataFrame labelled
+    df_pos = pd.GeoDataFrame(
+        {**pos_data, 'landslide': [1]*n_samples}
+        geometry=pos_pts,
+        crs=landslides_gdf.crs
+    )
+    df_neg = pd.GeoDataFrame(
+        {**neg_data, 'landslide': [0]*n_samples},
+        geometry=neg_pts,
+        crs=landslides_gdf.crs
+    )
+    # Combine positive and negative samples and return
+    return pd.concat([df_pos, df_neg], ignore_index=True)
+
+
 def extract_values_from_raster(
     raster: DatasetReader,
     points: List[Point]
 ) -> List[float]:
     """
     given an open rasterio DatasetReader and a list of shapely point
-    geometries, sample the raster at each point and return a list of floats
+    geometries (in same CRS as raster), sample the raster at each point 
+    and return a list of python floats
     """
     coordinates = [(pt.x, pt.y) for pt in points]
     samples = raster.sample(coordinates)
