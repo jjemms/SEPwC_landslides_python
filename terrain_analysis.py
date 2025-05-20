@@ -177,8 +177,40 @@ def make_classifier(x, y, verbose=False):
     clf.scaler = scaler
     return clf
 
-def make_prob_raster_data(topo, geo, lc, dist_fault, slope, classifier):
-    return
+def make_prob_raster_data(
+    topo: rasterio.io.DatasetReader,
+    geo: rasterio.io.DatasetReader,
+    lc: rasterio.io.DatasetReader,
+    dist_fault: rasterio.io.DatasetReader,
+    slope: rasterio.io.DatasetReader,
+    classifier
+) -> np.ndarray:
+    """
+    Run the classifier (which is now trained) on each pixel in the five rasters
+    and return a 2D array of probabilities (0.0-1.0)    
+    """
+    arr_topo = topo.read(1)
+    arr_geo  = geo.read(1)
+    arr_lc   = lc.read(1)
+    arr_fault = dist_fault.read(1)
+    arr_slope = slope.read(1)
+
+    # Stack the arrays into an n_pixels, n_features array
+    h, w = arr_topo.shape
+    features_stack = np.stack([
+        arr_topo.ravel(),
+        arr_geo.ravel(),
+        arr_lc.ravel(),
+        arr_fault.ravel(),
+        arr_slope.ravel()
+    ], axis=1)
+
+    # Apply the scaler to the stacked features
+    if hasattr(classifier, 'scaler'): 
+        features_stack = classifier.scaler.transform(features_stack) 
+
+    probs = classifier.predict_proba(features_stack)[:, 1]
+    return probs.reshape(h, w)
 
 def create_dataframe(
     topo: DatasetReader,
