@@ -148,15 +148,40 @@ def extract_values_from_raster(
     return [float(arr[0]) for arr in samples] 
 
 def make_classifier(x, y, verbose=False):
+    """
+    Train a RandomForestClassifier on x, y
+    Splits of 30% for testing, scales features, fits 100 trees
 
-    return
+    Test on 30% to see how model will perform in the real world
+    
+    if verbose=True, print the accuracy of train and test
+    """
+    # Split into train & test 
+    # Train on 70% of data so model can learn patterns
+    X_train, X_test, y_train, y_test = train_test_split(
+        x, y, test_size=0.3, random_state=42, stratify=y
+    )
+    
+    scaler = StandardScaler().fit(X_train)
+    X_train_s = scaler.transform(X_train)
+    X_test_s = scaler.transform(X_test)
+
+    # Fit forest of 100 trees
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X_train_s, y_train)
+
+    if verbose:
+        train_acc = clf.score(X_train_s, y_train)
+        test_acc  = clf.score(X_test_s,  y_test)
+        print(f"Train accuracy: {train_acc:.2f}, Test accuracy: {test_acc:.2f}")
+
+    clf.scaler = scaler
+    return clf
 
 def make_prob_raster_data(topo, geo, lc, dist_fault, slope, classifier):
-
     return
 
 def create_dataframe(topo, geo, lc, dist_fault, slope, shape, landslides):
-
     return
 
 
