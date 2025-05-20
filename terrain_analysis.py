@@ -1,4 +1,3 @@
-# pylint: skip-file
 """
 terrain_analysis.py
 
@@ -181,9 +180,38 @@ def make_classifier(x, y, verbose=False):
 def make_prob_raster_data(topo, geo, lc, dist_fault, slope, classifier):
     return
 
-def create_dataframe(topo, geo, lc, dist_fault, slope, shape, landslides):
-    return
+def create_dataframe(
+    topo: DatasetReader,
+    geo: DatasetReader,
+    lc: DatasetReader,
+    dist_fault: DatasetReader,
+    slope: DatasetReader,
+    shapes: List[Point],
+    label: int
+) -> gpd.GeoDataFrame:
+    """
+    Sample the raster data at the given shapes and create a GeoDataFrame
+    with columns and no geometry column.
+    """
+    # Sample each raster band at points
+    elevs = extract_values_from_raster(topo, shapes)
+    faults = extract_values_from_raster(dist_fault, shapes)
+    slopes = extract_values_from_raster(slope, shapes)
+    lcs = extract_values_from_raster(lc, shapes)
+    geos = extract_values_from_raster(geo, shapes)
 
+    n = len(shapes)
+    data = {
+        'elev': elevs,
+        'fault': faults,
+        'slope': slopes,
+        'LC': lcs,
+        'Geol': geos,
+        'ls': [label] * n
+    }    
+
+    # Build a GeoDataFrame and return it
+    return gpd.GeoDataFrame(data)
 
 def main():
 
