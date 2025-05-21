@@ -22,6 +22,7 @@ import pandas as pd
 from rasterio.io import MemoryFile, DatasetReader
 from rasterio.features import rasterize
 from typing import List, Union
+from proximity import proximity
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import train_test_split
@@ -275,7 +276,56 @@ def main():
                     help="Print progress")
 
     args = parser.parse_args()
+    # Open all the input rasters
+    with rasterio.open(args.topography) as dem, \
+         rasterio.open(args.geology) as geo, \
+         rasterio.open(args.landcover) as lc:
+        
+        # Simple slope raster (dz/d, dy/dx is magnitude)
+        dem_arr = dem.read(1).astype('float32')
+        xres, yres = dem.transform.a, -dem.transform.e
+        dz_dy, dz_dx = np.gradient(dem_arr, yres, xres)
+        slope_arr = np.hypot(dz_dx, dz_dy)
+        slope = convert_to_rasterio(slope_arr.astype('float32'), dem)
 
+        # Rasterise fault shapefile then calculate euclidean distance
+        faults_gdf = gpd.read_file(args.faults).to_crs(dem.crs)
+        fault_mask = rasterize(
+            [(geom, 1) for geom in faults_gdf.geometry],
+            out_shape=(dem.height, dem.width),
+            transform=dem.transform,
+            fill=0,
+            dtype='uint8'
+        )
+        dist_arr = proximity(dem, fault_mask, 1)
+        dist_fault = convert_to_rasterio(dist_arr.astype('float32'), dem)
+
+        # Read the landslide points and generate the training samples
+        slides = gpd.read_file(args.landslides).to_crs(dem.crs)
+        samples = build_dataframe(
+            dem, geo, lc, dist_fault, slides,
+            n_samples=len(slides)
+        )
+        x = samples[['elevation', 'geology', 'landcover', 'faults', 'slope']]
+        y = samples['landslide']
+
+        # Train the Random Forest classifier and predict probabilities
+        clf = make_classifier(x, y, verbose=args.verbose)
+        probability = make_prob_raster_data(
+            dem, geo, lc, dist_fault, slope, clf
+        )
+
+        # Convert the probability array to a raster
+        # and write it to a GeoTIFF file
+        out_source = convert_to_rasterio(
+            probability.astype('float32'), dem
+        )
+        profile = out_source.profile
+        with rasterio.open(args.output, 'w', **profile) as dst:
+            dst.write(out_source.read(1), 1)
+       
+    if args.verbose:
+        print(f"Landslide probability risk map saved to {args.output}")
 
 if __name__ == '__main__':
     main()
