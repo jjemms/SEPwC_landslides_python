@@ -1,5 +1,7 @@
 import pytest
 import sys
+import rasterio
+import numpy as np
 sys.path.insert(0,"../")
 sys.path.insert(0,"./")
 from proximity import *

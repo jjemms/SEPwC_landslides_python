@@ -1,0 +1,5 @@
+[MASTER]
+disable=
+
+[FORMAT]
+max-line-length=100
